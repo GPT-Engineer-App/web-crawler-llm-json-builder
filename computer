@@ -1,0 +1,73 @@
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { llm } from "./llm"; // assuming you have an LLM implementation in a separate file
+
+interface CrawledData {
+  url: string;
+  text: string;
+  subPages: CrawledData[];
+}
+
+const App = () => {
+  const [crawledData, setCrawledData] = useState<CrawledData[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    const crawlWebsite = async (url: string) => {
+      const response = await fetch(url);
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      const text = $("body").text();
+      const subPages: CrawledData[] = [];
+
+      $("a[href]").each((_, element) => {
+        const href = $(element).attr("href");
+        if (href && href.startsWith("/")) {
+          subPages.push(crawlWebsite(`${url}${href}`));
+        }
+      });
+
+      const analyzedText = await llm(text);
+      const jsonData = {
+        url,
+        text: analyzedText,
+        subPages,
+      };
+
+      setCrawledData((prevData) => [...prevData, jsonData]);
+
+      // Save JSON data to file
+      const jsonDataString = JSON.stringify(jsonData, null, 2);
+      const blob = new Blob([jsonDataString], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `crawled-data-${url}.json`;
+      a.click();
+    };
+
+    crawlWebsite("https://example.com"); // replace with the website you want to crawl
+  }, []);
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1>Website Crawler</h1>
+      <ul>
+        {crawledData.map((data, index) => (
+          <li key={index}>
+            <a href={data.url}>{data.url}</a>
+            <ul>
+              {data.subPages.map((subPage, subIndex) => (
+                <li key={subIndex}>
+                  <a href={subPage.url}>{subPage.url}</a>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+export default App;
